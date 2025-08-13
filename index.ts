@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-const DEFAULT_PORT = Number(process.env.PORT || 3000);
+const DEFAULT_PORT = Number(process.env.PORT || 4870);
 
 // i know this shi workin in just a single file, but if you want to split it up, go ahead. i just wanted to keep it simple and easy to understand.
 
@@ -19,9 +19,18 @@ const ATTEMPTS: UpstreamAttempt[] = [
 
 
 // this is a fixed user agent. i dont think it matters much but it's here just in case.
+// using more common user agents to avoid blocks
 
-const FIXED_USER_AGENT =
-	"Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0";
+const USER_AGENTS = [
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0"
+];
+
+function getRandomUserAgent(): string {
+	return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+}
 
 function buildCorsHeaders(extra?: HeadersInit): Headers {
 	const headers = new Headers(extra);
@@ -56,8 +65,9 @@ function isLikelyPlaylist(url: URL, upstreamContentType: string | null): boolean
 // this just builds the url for the proxy. it's used to build the url for the proxy which your lazy ass might want to use. like for worker request origin headers. you wouldn't but there it is.
 function proxify(target: string, proxyBase: string, originParam?: string | null): string {
     const base = `${proxyBase}?url=${encodeURIComponent(target)}`;
-    if (originParam) return `${base}&origin=${encodeURIComponent(originParam)}`;
-    return base;
+    const result = originParam ? `${base}&origin=${encodeURIComponent(originParam)}` : base;
+    console.log(`[DEBUG] Proxifying ${target} with base ${proxyBase} -> ${result}`);
+    return result;
 }
 
 
@@ -162,15 +172,20 @@ async function fetchUpstream(
 
     for (const attempt of attempts) {
 		const upstreamHeaders: HeadersInit = {
-			"User-Agent": FIXED_USER_AGENT,
+			"User-Agent": getRandomUserAgent(),
 			Accept: "*/*",
 			"Accept-Encoding": clientRange ? "identity" : "gzip, deflate, br, zstd",
-			"Accept-Language": "en-US,en;q=0.5",
+			"Accept-Language": "en-US,en;q=0.9",
+			"Cache-Control": "no-cache",
+			"Pragma": "no-cache",
 			Origin: attempt.origin,
 			Referer: attempt.referer,
 			"Sec-Fetch-Dest": "empty",
 			"Sec-Fetch-Mode": "cors",
 			"Sec-Fetch-Site": "cross-site",
+			"Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+			"Sec-Ch-Ua-Mobile": "?0",
+			"Sec-Ch-Ua-Platform": '"Linux"',
 			Connection: "keep-alive"
 		};
 
@@ -195,7 +210,11 @@ async function fetchUpstream(
 			if (!(res.status === 403 || res.status === 401)) {
 				return res;
 			}
+			// small delay before trying next attempt to avoid rate limits
+			await new Promise(resolve => setTimeout(resolve, 500));
 		} catch (err) {
+			// small delay on error too
+			await new Promise(resolve => setTimeout(resolve, 300));
 		}
 	}
 
@@ -257,7 +276,13 @@ const server = Bun.serve({
 
 		if (isPlaylistReq) {
 			const playlistText = await upstream.text();
-            const rewritten = rewritePlaylist(playlistText, targetUrl.toString(), `${url.origin}/`, originParamRaw);
+            // Fix mixed content issues by using the same protocol as the request
+            // Check for forwarded protocol (common with reverse proxies)
+            const forwardedProto = req.headers.get('x-forwarded-proto') || req.headers.get('x-forwarded-protocol');
+            const protocol = forwardedProto ? `${forwardedProto}:` : url.protocol;
+            const proxyBaseUrl = `${protocol}//${url.host}/`;
+            console.log(`[DEBUG] URL protocol: ${url.protocol}, forwarded: ${forwardedProto}, final: ${protocol}, proxy base: ${proxyBaseUrl}`);
+            const rewritten = rewritePlaylist(playlistText, targetUrl.toString(), proxyBaseUrl, originParamRaw);
 			const headers = buildCorsHeaders({
 				"Content-Type": "application/vnd.apple.mpegurl; charset=utf-8",
 				"Cache-Control": "no-cache, no-store, must-revalidate"
