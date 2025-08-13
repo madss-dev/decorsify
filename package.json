@@ -4,10 +4,18 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run --watch index.ts"
+    "dev": "bun run --watch index.ts",
+    "build": "mkdir -p dist && esbuild src/worker.ts --bundle --format=esm --outfile=dist/worker.js --platform=neutral --target=es2022",
+    "deploy": "wrangler deploy",
+    "dev:worker": "wrangler dev",
+    "preview": "wrangler dev --local"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@cloudflare/workers-types": "^4.20250813.0",
+    "@types/bun": "latest",
+    "@types/node": "^24.2.1",
+    "esbuild": "^0.25.9",
+    "wrangler": "^4.29.1"
   },
   "peerDependencies": {
     "typescript": "^5"

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Worker-specific configuration
+    "lib": ["ESNext", "WebWorker"],
+    "types": ["@cloudflare/workers-types"],
+    "noEmit": false,
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["index.ts", "node_modules"]
+}
