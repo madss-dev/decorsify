@@ -4,6 +4,10 @@ main = "dist/worker.js"
 compatibility_date = "2024-01-15"
 compatibility_flags = ["nodejs_compat"]
 
+# Remove some restrictions that might interfere with proxy functionality
+[env.production.vars]
+WORKER_ENV = "production"
+
 # Environment variables
 [vars]
 # You can add any environment variables here if needed

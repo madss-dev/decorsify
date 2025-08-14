@@ -170,19 +170,13 @@ async function fetchUpstream(
 		const upstreamHeaders: HeadersInit = {
 			"User-Agent": getRandomUserAgent(),
 			Accept: "*/*",
-			"Accept-Encoding": clientRange ? "identity" : "gzip, deflate, br, zstd",
+			"Accept-Encoding": clientRange ? "identity" : "gzip, deflate, br",
 			"Accept-Language": "en-US,en;q=0.9",
 			"Cache-Control": "no-cache",
 			"Pragma": "no-cache",
 			Origin: attempt.origin,
-			Referer: attempt.referer,
-			"Sec-Fetch-Dest": "empty",
-			"Sec-Fetch-Mode": "cors",
-			"Sec-Fetch-Site": "cross-site",
-			"Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-			"Sec-Ch-Ua-Mobile": "?0",
-			"Sec-Ch-Ua-Platform": '"Linux"',
-			Connection: "keep-alive"
+			Referer: attempt.referer
+			// Removed Sec-* and Connection headers as they might be restricted in Workers
 		};
 
         // yup exactly as i said above
@@ -200,20 +194,25 @@ async function fetchUpstream(
 			const res = await fetch(targetUrl, {
 				method,
 				headers: upstreamHeaders,
-				signal: clientReq.signal ?? undefined,
+				signal: (clientReq as any).signal ?? undefined,
 				redirect: "follow"
 			});
+			
+			console.log(`[DEBUG] Attempt with ${attempt.origin}: ${res.status} ${res.statusText}`);
+			
 			if (!(res.status === 403 || res.status === 401)) {
 				return res;
 			}
 			// small delay before trying next attempt to avoid rate limits
 			await new Promise(resolve => setTimeout(resolve, 500));
 		} catch (err) {
+			console.log(`[DEBUG] Fetch error with ${attempt.origin}:`, err);
 			// small delay on error too
 			await new Promise(resolve => setTimeout(resolve, 300));
 		}
 	}
 
+	console.log(`[DEBUG] All attempts failed, trying direct fetch to ${targetUrl}`);
 	return fetch(targetUrl);
 }
 
@@ -232,6 +231,8 @@ function usage(): Response {
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);
+		
+		console.log(`[DEBUG] Incoming request: ${request.method} ${url.pathname}${url.search}`);
 
 		if (request.method === "OPTIONS") {
 			return new Response(null, { status: 204, headers: buildCorsHeaders() });
@@ -239,6 +240,9 @@ export default {
 
 		const target = url.searchParams.get("url");
         const originParamRaw = url.searchParams.get("origin");
+        
+        console.log(`[DEBUG] Target URL: ${target}, Origin param: ${originParamRaw}`);
+        
 		if (!target) {
 			return usage();
 		}
@@ -265,6 +269,9 @@ export default {
 
         const method = request.method === "HEAD" ? "HEAD" : "GET";
         const upstream = await fetchUpstream(targetUrl, request, attempts, method);
+        
+        console.log(`[DEBUG] Final upstream response: ${upstream.status} ${upstream.statusText}`);
+        
 		const upstreamContentType = upstream.headers.get("content-type");
         const isPlaylistReq = method === "GET" && isLikelyPlaylist(targetUrl, upstreamContentType);
 
