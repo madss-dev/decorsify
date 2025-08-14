@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext", "WebWorker"],
+    "lib": ["ESNext"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
@@ -24,9 +24,6 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false,
-
-    // Support both Bun and Cloudflare Workers
-    "types": ["bun-types", "@cloudflare/workers-types", "node"]
+    "noPropertyAccessFromIndexSignature": false
   }
 }
